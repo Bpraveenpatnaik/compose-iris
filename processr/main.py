@@ -5,6 +5,7 @@ from typing import List
 from fastapi import FastAPI
 from pydantic import BaseModel
 from utils import process_data
+from sklearn.datasets import load_wine
 
 TRAINR_ENDPOINT = os.getenv("TRAINR_ENDPOINT")
 
@@ -13,11 +14,11 @@ app = FastAPI(title="processr", docs_url="/")
 
 # class which is expected in the payload while training
 class DataIn(BaseModel):
-    sepal_length: float
-    sepal_width: float
-    petal_length: float
-    petal_width: float
-    flower_class: str
+    alcohol: float
+    malic_acid: float
+    ash: float
+    alcalinity_of_ash: float
+    wine_class: str
 
 
 # Route definitions

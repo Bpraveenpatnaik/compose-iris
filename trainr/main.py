@@ -5,6 +5,8 @@ from fastapi import FastAPI
 from pydantic import BaseModel
 from utils import init_model, train_model
 from typing import List
+from sklearn.datasets import load_wine
+import pandas as pd
 
 
 PREDICTR_ENDPOINT = os.getenv("PREDICTR_ENDPOINT")
@@ -18,11 +20,11 @@ app.add_event_handler("startup", init_model)
 
 # class which is expected in the payload while training
 class TrainIn(BaseModel):
-    sepal_length: float
-    sepal_width: float
-    petal_length: float
-    petal_width: float
-    flower_class: str
+    alcohol: float
+    malic_acid: float
+    ash: float
+    alcalinity_of_ash: float
+    wine_class: str
 
 
 # Route definitions
