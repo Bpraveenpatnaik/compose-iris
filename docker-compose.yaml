@@ -1,31 +1,37 @@
-version: '3'
-
 services:
   processr:
-    deploy:
-      replicas: 1
-    build: processr
+    build:
+      context: .
+      dockerfile: processr/Dockerfile
     environment:
       - TRAINR_ENDPOINT=http://trainr:7777
     ports:
       - "8888:8888"
+    depends_on:
+      - trainr
 
   trainr:
-    deploy:
-      replicas: 1
-    build: trainr
+    build:
+      context: .
+      dockerfile: trainr/Dockerfile
     environment:
       - PREDICTR_ENDPOINT=http://predictr:9999
     ports:
       - "7777:7777"
     volumes:
-      - ./models:/app/models
+      - models:/app/models
+    depends_on:
+      - predictr
 
   predictr:
-    deploy:
-      replicas: 1
-    build: predictr
+    build:
+      context: .
+      dockerfile: predictr/Dockerfile
     ports:
       - "9999:9999"
     volumes:
-      - ./models:/app/models
+      - models:/app/models
+
+# named volume shared by trainr (writes the model) and predictr (reads it)
+volumes:
+  models:

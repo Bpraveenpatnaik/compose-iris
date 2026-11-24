@@ -1,51 +1,43 @@
-import uvicorn
 import os
+from contextlib import asynccontextmanager
+
 import requests
-from fastapi import FastAPI
-from pydantic import BaseModel
+import uvicorn
+from fastapi import FastAPI, HTTPException
+
+from common.wine import WineSample
 from utils import init_model, train_model
-from typing import List
-from sklearn.datasets import load_wine
-import pandas as pd
+
+PREDICTR_ENDPOINT = os.getenv("PREDICTR_ENDPOINT", "http://localhost:9999")
 
 
-PREDICTR_ENDPOINT = os.getenv("PREDICTR_ENDPOINT")
-
-# defining the main app
-app = FastAPI(title="trainr", docs_url="/")
-
-# calling the load_model during startup.
-# this will train the model and keep it loaded for prediction.
-app.add_event_handler("startup", init_model)
-
-# class which is expected in the payload while training
-class TrainIn(BaseModel):
-    alcohol: float
-    malic_acid: float
-    ash: float
-    alcalinity_of_ash: float
-    wine_class: str
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    init_model()
+    yield
 
 
-# Route definitions
+app = FastAPI(title="trainr", docs_url="/", lifespan=lifespan)
+
+
 @app.get("/ping")
-# Healthcheck route to ensure that the API is up and running
 def ping():
+    """Health check."""
     return {"ping": "pong"}
 
 
 @app.post("/train", status_code=200)
-# Route to further train the model based on user input in form of feedback loop
-# Payload: FeedbackIn containing the parameters and correct flower class
-# Response: Dict with detail confirming success (200)
-def train(data: List[TrainIn]):
-    train_model(data)
-    # tell predictr to reload the model
-    response = requests.post(f"{PREDICTR_ENDPOINT}/reload_model")
-    return {"detail": "Training successful"}
+def train(data: list[WineSample]):
+    """Retrain the model with new labelled samples, then tell predictr to
+    load the new version."""
+    accuracy = train_model(data)
+    try:
+        response = requests.post(f"{PREDICTR_ENDPOINT}/reload_model", timeout=30)
+        response.raise_for_status()
+    except requests.RequestException as exc:
+        raise HTTPException(status_code=502, detail=f"predictr reload failed: {exc}")
+    return {"detail": "Training successful", "cv_accuracy": round(accuracy, 3)}
 
 
-# Main function to start the app when main.py is called
 if __name__ == "__main__":
-    # Uvicorn is used to run the server and listen for incoming API requests on 0.0.0.0:8888
-    uvicorn.run("main:app", host="0.0.0.0", port=7777, reload=True)
+    uvicorn.run("main:app", host="0.0.0.0", port=7777)
