@@ -50,12 +50,28 @@ A hands-on "shift-left security" assignment: run tests, coverage tracking and co
 | Hardening | The image moved to `python:3.11-slim`, runs as a non-root user, and copies in only the app code. The feedback loop now keeps the original training data instead of replacing it. |
 
 ### Pipeline
+```mermaid
+flowchart LR
+    trigger(["push or pull request"])
+    unittest["unittest<br/>pytest"]
+    cov["codecoverage<br/>Python 3.10–3.12 × Ubuntu, Windows<br/>fails below 95%"]
+    sec["container-security<br/>build → Grype scan → SARIF report"]
+    release["upload_zip<br/>runs only after all 3 pass"]
+    codecov[("Codecov")]
+    sarif[["SARIF report + severity chart"]]
+
+    trigger --> unittest
+    trigger --> cov
+    trigger --> sec
+    cov -- "uploads coverage" --> codecov
+    sec -- "uploads artifact" --> sarif
+    unittest --> release
+    cov --> release
+    sec --> release
+
+    linkStyle 5,6,7 stroke:#2f6fdb,stroke-width:2px
 ```
-push ──► unittest ─────────────┐
-     ├─► codecoverage (py3.10/3.11/3.12 × ubuntu/windows, 95% gate) ─► Codecov
-     ├─► container-security (Buildx ► Anchore/Grype scan ► SARIF + summary chart)
-     └───────────────────────────► upload_zip (only after all 3 pass) ► release.zip
-```
+The three checks run in parallel; the highlighted edges are the release gate.
 
 ### Security findings
 The scan found **72 vulnerabilities** in the `python:3.8-slim` image:
@@ -83,11 +99,24 @@ The scan found **72 vulnerabilities** in the `python:3.8-slim` image:
 An ML system split into three containerized FastAPI microservices: **preprocessing → training → prediction**. They run together under Docker Compose, talk to each other over HTTP and share trained models through a named volume. The template used the Iris dataset; this version predicts the **cultivar of a wine from all 13 chemical measurements in the UCI Wine dataset**, with a scaled **logistic regression** model (about 98% cross-validated accuracy).
 
 ### Architecture
+```mermaid
+flowchart LR
+    client([Client])
+    processr["processr :8888<br/>clean, dedupe"]
+    trainr["trainr :7777<br/>retrain, save"]
+    predictr["predictr :9999<br/>serve predictions"]
+    models[("models<br/>shared volume")]
+
+    client -- "POST /process" --> processr
+    processr -- "POST /train" --> trainr
+    trainr -- "writes model" --> models
+    trainr -- "POST /reload_model" --> predictr
+    models -- "loads model" --> predictr
+    client -- "POST /predict_wine" --> predictr
+
+    linkStyle 2,3,4 stroke:#2f6fdb,stroke-width:2px
 ```
-client ─POST /process─► processr :8888 ─POST /train─► trainr :7777 ─POST /reload_model─► predictr :9999 ◄─POST /predict_wine─ client
-                                                         │                                  ▲
-                                                         └──── ./models (shared volume) ─────┘
-```
+The highlighted edges are the model hand-off: trainr saves each new model to the shared volume and tells predictr to reload it, so predictions switch to the new model without a restart.
 - **processr:** validates and cleans incoming labelled records, then forwards them to `trainr`.
 - **trainr:** loads the current model from the shared volume, retrains it, saves it, and tells `predictr` to reload.
 - **predictr:** serves predictions from the latest saved model.

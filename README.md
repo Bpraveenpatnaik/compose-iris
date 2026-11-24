@@ -6,11 +6,24 @@ Started from the [PGCSEDS-IIITH/compose-iris](https://github.com/PGCSEDS-IIITH/c
 
 ## Architecture
 
+```mermaid
+flowchart LR
+    client([Client])
+    processr["processr :8888<br/>clean, dedupe"]
+    trainr["trainr :7777<br/>retrain, save"]
+    predictr["predictr :9999<br/>serve predictions"]
+    models[("models<br/>shared volume")]
+
+    client -- "POST /process" --> processr
+    processr -- "POST /train" --> trainr
+    trainr -- "writes model" --> models
+    trainr -- "POST /reload_model" --> predictr
+    models -- "loads model" --> predictr
+    client -- "POST /predict_wine" --> predictr
+
+    linkStyle 2,3,4 stroke:#2f6fdb,stroke-width:2px
 ```
-client ─POST /process─► processr :8888 ─POST /train─► trainr :7777 ─POST /reload_model─► predictr :9999 ◄─POST /predict_wine─ client
-                                                         │                                  ▲
-                                                         └────── models volume (shared) ─────┘
-```
+The highlighted edges are the model hand-off: trainr saves each new model to the shared volume and tells predictr to reload it, so predictions switch to the new model without a restart.
 
 | Service | Port | What it does |
 |---|---|---|
