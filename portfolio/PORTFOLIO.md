@@ -12,12 +12,12 @@ Four projects from 2021, built during the **PGCSEDS program at IIIT Hyderabad**.
 
 | # | Project | Theme | Period | Key tech |
 |---|---|---|---|---|
-| 1 | [DevSecOps Pipeline for an ML API](#1-devsecops-pipeline-for-an-ml-inference-api) | DevSecOps, CI/CD | Sep 2021 | GitHub Actions, Docker, Anchore, SARIF, Codecov |
+| 1 | [DevSecOps Pipeline for an ML API](#1-devsecops-pipeline-for-an-ml-inference-api) | DevSecOps, CI/CD | Sep 2021, updated 2026 | GitHub Actions, Docker, Anchore, SARIF, Codecov |
 | 2 | [Containerized ML Microservices](#2-containerized-ml-microservices-with-docker-compose) | Microservices, Docker | Aug 2021, updated 2026 | Docker Compose, FastAPI, scikit-learn, pytest, GitHub Actions |
-| 3 | [MLOps: Iris Prediction API](#3-mlops-iris-prediction-api-with-ci) | MLOps, CI | Jul 2021 | FastAPI, scikit-learn, pytest, GitHub Actions |
-| 4 | [House Price Prediction Hackathon](#4-house-price-prediction-hackathon) | Data science, Big data | Sep 2021 | pandas, scikit-learn, PCA, PySpark MLlib |
+| 3 | [MLOps: Iris Prediction API](#3-mlops-iris-prediction-api-with-ci) | MLOps, CI | Jul 2021, updated 2026 | FastAPI, scikit-learn, pytest, GitHub Actions |
+| 4 | [House Price Prediction Hackathon](#4-house-price-prediction-hackathon) | Data science, Big data | Sep 2021, updated 2026 | pandas, scikit-learn, Lasso/Ridge, PCA, PySpark MLlib |
 
-> **Note:** Projects 1–3 are course assignments. Each one starts from a template repo provided by the course, and Praveen forked it and extended it. The sections below describe his own changes. Project 4 is his own work from start to finish.
+> **Note:** Projects 1–3 are course assignments. Each one starts from a template repo provided by the course, and Praveen forked it and extended it. All four repos were updated in 2026 with fixes, tests and documentation. The sections below describe each repo as it is now, compared with the original template.
 
 ### Skills across the projects
 - **ML engineering:** model training and evaluation, serving models over REST, online retraining (a feedback loop)
@@ -39,19 +39,21 @@ Built out a GitHub Actions CI/CD pipeline that tests a containerized FastAPI mac
 ### Context
 A hands-on "shift-left security" assignment: run tests, coverage tracking and container vulnerability scanning automatically on every push, before anything is released. The starter repo had a FastAPI service with a scikit-learn Gaussian Naive Bayes model for the Iris dataset (`/ping`, `/predict_flower`, `/feedback_loop`), a Dockerfile and a basic pipeline.
 
-### What he did
+### What was built on top of the template
 | Area | Contribution |
 |---|---|
-| Cross-platform CI matrix | Extended the coverage job to a **Python × OS matrix** (3.7, 3.8 and 3.9 × Ubuntu and Windows), so every push runs **6 parallel jobs**. |
+| Cross-platform CI matrix | Extended the coverage job to a **Python × OS matrix** (3 Python versions × Ubuntu and Windows), so every push runs **6 parallel jobs**. |
 | Code coverage | Connected his fork to **Codecov** (`pytest-cov` plus `codecov-action`) and added the repo's coverage badge to the README. |
 | Container security | Ran the **Anchore/Grype** scan of the Docker image built in CI, with a medium-severity cutoff, and saved the **SARIF** report as a build artifact. |
-| Reporting | Committed the SARIF report and reviewed it in Microsoft's SARIF Web Validator (screenshot in `reports/`). |
+| Reporting | Committed the SARIF report and reviewed it in Microsoft's SARIF Web Validator. Later added `reports/sarif_summary.py`, which turns the report into a severity table and chart; CI now publishes these with every scan. |
+| Testing | Tests for all three species, the feedback loop, model accuracy and input validation: **98% coverage**, with CI failing below 95%. |
+| Hardening | The image moved to `python:3.11-slim`, runs as a non-root user, and copies in only the app code. The feedback loop now keeps the original training data instead of replacing it. |
 
 ### Pipeline
 ```
 push ──► unittest ─────────────┐
-     ├─► codecoverage (py3.7/3.8/3.9 × ubuntu/windows) ─► Codecov
-     ├─► container-security (Buildx ► Anchore/Grype scan ► SARIF artifact)
+     ├─► codecoverage (py3.10/3.11/3.12 × ubuntu/windows, 95% gate) ─► Codecov
+     ├─► container-security (Buildx ► Anchore/Grype scan ► SARIF + summary chart)
      └───────────────────────────► upload_zip (only after all 3 pass) ► release.zip
 ```
 
@@ -68,8 +70,8 @@ The scan found **72 vulnerabilities** in the `python:3.8-slim` image:
 **Insight:** every finding came from the Debian base image, not the application code, and none had an upstream fix when the scan ran. Ways to reduce the risk: rebuild on a newer base image regularly, use distroless or slimmer images, and remove unneeded layers.
 
 ### Resume bullets
-- Extended a GitHub Actions CI/CD pipeline for a containerized FastAPI ML service to a cross-platform matrix (3 Python versions × Ubuntu/Windows, 6 parallel jobs), with Codecov coverage reporting.
-- Added container vulnerability scanning with Anchore/Grype and SARIF reports, and triaged 72 CVEs in the base image (2 critical, 6 medium).
+- Extended a GitHub Actions CI/CD pipeline for a containerized FastAPI ML service to a cross-platform matrix (3 Python versions × Ubuntu/Windows, 6 parallel jobs), with a 95% coverage gate (98% achieved) and Codecov reporting.
+- Added container vulnerability scanning with Anchore/Grype, automated a SARIF-to-chart severity report, and triaged 72 base-image CVEs (2 critical, 6 medium). Reduced the exposure with a newer slim base image and a non-root user.
 - Set up gated release packaging, so artifacts are only published after the tests, coverage job and security scan all pass.
 
 ---
@@ -111,16 +113,18 @@ client ─POST /process─► processr :8888 ─POST /train─► trainr :7777 �
 **Repo:** https://github.com/Bpraveenpatnaik/mlops-iris · **Period:** Jul 2021 · **Type:** Course assignment (forked template)
 
 ### Summary
-A FastAPI service that serves an Iris flower classifier, with automated tests and a GitHub Actions pipeline that runs pytest and packages the code as a release artifact. It also has a feedback-loop endpoint for retraining the model on new data.
+A FastAPI service that serves an Iris flower classifier. On startup it trains two models and **serves whichever has the best cross-validated accuracy**. Each response includes the model used and a UTC timestamp. GitHub Actions runs the tests with a coverage gate and packages each release.
 
-### What he did
-- **Compared models:** added a **Decision Tree** classifier, trained and evaluated alongside the existing Gaussian Naive Bayes model.
-- **Tests:** wrote pytest cases for the *Setosa* and *Versicolour* classes using FastAPI's `TestClient`.
-- **Response metadata:** added a training-date log and a `timestamp` field to the prediction response schema.
-- **Pipeline:** on every push and PR, the CI job runs the tests, then a gated job zips the code and uploads it as an artifact.
+### What was built on top of the template
+- **Model selection:** Gaussian Naive Bayes and a Decision Tree are each scored with 5-fold cross-validation on the training split. The better one is served, and its accuracy on a held-out test split is logged (Naive Bayes wins: 95.8% CV, 96.7% on the test split).
+- **Traceable predictions:** responses include `flower_class`, `model` and `timestamp`.
+- **Feedback loop:** labelled samples are added to the training data, so retraining never forgets earlier data.
+- **Validation:** measurements must be positive, and class labels are checked against the three species.
+- **Tests and CI:** 8 pytest tests (99% coverage) covering each species, model selection, timestamps, feedback and validation. CI fails if coverage drops below 90%, and a gated release job zips the code.
 
 ### Resume bullets
-- Extended a FastAPI ML inference service with a Decision Tree classifier for comparison against Gaussian Naive Bayes, and added class-level API tests that run in GitHub Actions.
+- Built a FastAPI ML inference service that picks the best of several classifiers by cross-validated accuracy at startup and returns traceable predictions (model name and timestamp).
+- Implemented an online-retraining feedback loop and a pytest suite with 99% coverage, run in GitHub Actions with a coverage gate and gated release packaging.
 
 ---
 
@@ -128,18 +132,28 @@ A FastAPI service that serves an Iris flower classifier, with automated tests an
 **Repo:** https://github.com/Bpraveenpatnaik/IIITH-Hackathon-2 · **Period:** Sep 2021 · **Type:** Hackathon (IIIT Hyderabad), individual work
 
 ### Summary
-A full regression workflow for predicting house sale prices on the Ames housing dataset (the data used in Kaggle's "House Prices" competition). It covers EDA, feature engineering, scikit-learn models and a **PySpark MLlib** version of the pipeline.
+A full regression workflow for predicting house sale prices on the Ames housing dataset (the data used in Kaggle's "House Prices" competition). It covers EDA, feature cleaning, a comparison of scikit-learn models, and a **PySpark MLlib** version of the pipeline. Originally a Colab notebook, it is now a set of runnable scripts with reported results.
 
 ### Approach
-1. **EDA:** looked at the distribution of the target (`SalePrice`), made a correlation heatmap and picked out the top 10 features most correlated with price (e.g. `OverallQual`, `GrLivArea`, `GarageCars`, `TotalBsmtSF`), plus pair plots.
-2. **Data cleaning:** built a table of missing values and dropped 18 columns with many gaps (e.g. `PoolQC`, `Alley`, `Fence`, the garage and basement detail columns), then one-hot encoded the categorical columns.
-3. **Modelling (scikit-learn):** used linear regression with an 80/20 split and **10-fold cross-validated RMSE**, and saved the model with pickle.
-4. **Dimensionality reduction:** used **PCA** to cut the features to 5 components, then compared regression on those components with the full feature set.
-5. **Big-data pipeline (PySpark):** set up Spark 3.1 in Colab, loaded the CSV into Spark DataFrames, converted the column types, assembled the features with `VectorAssembler`, and trained an **elastic-net linear regression** (MLlib) on an 80/20 random split.
+1. **EDA:** the target is skewed to the right, so models are trained on log(price). A correlation heatmap picks out the top 10 features (overall quality 0.79, living area 0.71, garage size), and a table shows the missing values.
+2. **Data cleaning:** dropped the 7 columns missing in more than 15% of rows (e.g. `PoolQC`, `Alley`, `Fence`). Filled other gaps with the median or most frequent value, then one-hot encoded and scaled, all inside a scikit-learn `Pipeline` so nothing leaks between training and test data.
+3. **Model comparison (5-fold CV):**
+
+   | Model | CV RMSE (log price) | Test RMSE ($) | Test R² |
+   |---|---|---|---|
+   | **Lasso** | **0.130** | **23,621** | **0.927** |
+   | Ridge | 0.135 | 25,480 | 0.915 |
+   | Random forest | 0.144 | 29,120 | 0.889 |
+   | PCA (5) + linear | 0.148 | 31,467 | 0.871 |
+   | Plain linear regression | unstable | n/a | n/a |
+
+4. **Big-data pipeline (PySpark):** `Imputer` → `VectorAssembler` → `StandardScaler` → elastic-net regression in a Spark ML `Pipeline`, with the target kept out of the features. Test RMSE was $33,198 and R² 0.887 (log scale), using only the 36 numeric features.
+
+**Key insight:** after one-hot encoding there are about 270 correlated columns. Plain linear regression becomes numerically unstable, while regularized models (Lasso, Ridge) stay stable and win.
 
 ### Resume bullets
-- Built a house-price regression pipeline (EDA, handling missing data, one-hot encoding, PCA, cross-validated linear regression) in pandas and scikit-learn during an IIIT Hyderabad hackathon.
-- Rebuilt the pipeline in PySpark MLlib (VectorAssembler plus elastic-net regression) to show the same workflow could scale to big data.
+- Built a house-price regression pipeline (EDA, handling missing data, one-hot encoding, a log-transformed target) in a leak-free scikit-learn pipeline. Lasso reached R² 0.927 (about $23.6k RMSE) across 5 compared models.
+- Rebuilt the pipeline in PySpark MLlib (Imputer, VectorAssembler, elastic-net regression) to show it could scale, and found that regularization was essential on the high-dimensional one-hot features.
 
 ---
 
