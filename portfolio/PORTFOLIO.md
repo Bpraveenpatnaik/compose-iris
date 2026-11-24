@@ -13,7 +13,7 @@ Four projects from 2021, built during the **PGCSEDS program at IIIT Hyderabad**.
 | # | Project | Theme | Period | Key tech |
 |---|---|---|---|---|
 | 1 | [DevSecOps Pipeline for an ML API](#1-devsecops-pipeline-for-an-ml-inference-api) | DevSecOps, CI/CD | Sep 2021 | GitHub Actions, Docker, Anchore, SARIF, Codecov |
-| 2 | [Containerized ML Microservices](#2-containerized-ml-microservices-with-docker-compose) | Microservices, Docker | Aug 2021 | Docker Compose, FastAPI, scikit-learn |
+| 2 | [Containerized ML Microservices](#2-containerized-ml-microservices-with-docker-compose) | Microservices, Docker | Aug 2021, updated 2026 | Docker Compose, FastAPI, scikit-learn, pytest, GitHub Actions |
 | 3 | [MLOps: Iris Prediction API](#3-mlops-iris-prediction-api-with-ci) | MLOps, CI | Jul 2021 | FastAPI, scikit-learn, pytest, GitHub Actions |
 | 4 | [House Price Prediction Hackathon](#4-house-price-prediction-hackathon) | Data science, Big data | Sep 2021 | pandas, scikit-learn, PCA, PySpark MLlib |
 
@@ -78,7 +78,7 @@ The scan found **72 vulnerabilities** in the `python:3.8-slim` image:
 **Repo:** https://github.com/Bpraveenpatnaik/compose-iris · **Period:** Aug 2021 · **Type:** Course assignment (forked template)
 
 ### Summary
-An ML system split into three containerized FastAPI microservices: **preprocessing → training → prediction**. They run together under Docker Compose, talk to each other over HTTP and share trained models through a mounted volume. Praveen moved the stack from the Iris dataset to the **UCI Wine dataset** and replaced the model with **logistic regression**.
+An ML system split into three containerized FastAPI microservices: **preprocessing → training → prediction**. They run together under Docker Compose, talk to each other over HTTP and share trained models through a named volume. The template used the Iris dataset; this version predicts the **cultivar of a wine from all 13 chemical measurements in the UCI Wine dataset**, with a scaled **logistic regression** model (about 98% cross-validated accuracy).
 
 ### Architecture
 ```
@@ -91,14 +91,19 @@ client ─POST /process─► processr :8888 ─POST /train─► trainr :7777 �
 - **predictr:** serves predictions from the latest saved model.
 - Services find each other through environment variables (`TRAINR_ENDPOINT`, `PREDICTR_ENDPOINT`) and can be scaled with `deploy.replicas`.
 
-### What he did
-- Moved all three services from the Iris dataset to the **Wine dataset**: new Pydantic schemas (`alcohol`, `malic_acid`, `ash`, `alcalinity_of_ash`), a new `/predict_wine` endpoint and new class mappings.
-- Replaced Gaussian Naive Bayes with **logistic regression** in the training and prediction services, and versioned the pickled model artifacts.
-- Updated the dependencies for each service and added a GitHub Actions workflow skeleton.
+### What was built on top of the template
+- **New dataset:** moved all three services from Iris to the **UCI Wine dataset**, using all 13 features and the correct cultivar labels, with a `/predict_wine` endpoint.
+- **Shared schemas:** a single Pydantic module (`common/wine.py`) used by every service. It rejects negative values and unknown class labels.
+- **Better retraining:** feedback is stored and the model is retrained on the base data plus all feedback. The template refit on only the newest batch, which threw away earlier learning.
+- **Better model:** `StandardScaler` + logistic regression, reporting 5-fold cross-validated accuracy after each retrain.
+- **Reliability:** trainr trains a baseline model on startup. Services return a clear `502` or `503` when a downstream service or the model is unavailable, and requests have timeouts.
+- **Containers:** Python 3.11 slim images that run as a non-root user, a named volume for models, and no model files committed to git.
+- **Testing and CI:** 11 pytest tests (98% coverage), and a GitHub Actions pipeline that runs them, then builds the Compose stack and checks it end to end with real HTTP requests.
 
 ### Resume bullets
-- Adapted a 3-service ML system (preprocess → train → predict) to the UCI Wine dataset. Services run in Docker Compose, communicate over REST, and share model files through a mounted volume so retrained models go live without downtime.
-- Implemented consistent request schemas across services with FastAPI and Pydantic, and switched the model to logistic regression.
+- Built a 3-service ML system (preprocess → train → predict) on Docker Compose. The services communicate over REST and share models through a named volume, so retrained models go live without downtime.
+- Designed an online-retraining loop that keeps all past feedback and reports cross-validated accuracy (about 98%) after each update.
+- Added a pytest suite (98% coverage) and a GitHub Actions pipeline that builds the Compose stack and tests it end to end.
 
 ---
 

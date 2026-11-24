@@ -1,50 +1,47 @@
+from contextlib import asynccontextmanager
+
 import uvicorn
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
-from utils import load_model, predict
-from sklearn.datasets import load_wine
 
-# defining the main app
-app = FastAPI(title="predictr", docs_url="/")
-
-# class which is expected in the payload
-class QueryIn(BaseModel):
-    alcohol: float
-    malic_acid: float
-    ash: float
-    alcalinity_of_ash: float
+import utils
+from common.wine import WineClass, WineFeatures
 
 
-# class which is returned in the response
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    utils.load_model()
+    yield
+
+
+app = FastAPI(title="predictr", docs_url="/", lifespan=lifespan)
+
+
 class QueryOut(BaseModel):
-    wine_class: str
+    wine_class: WineClass
 
 
-# Route definitions
 @app.get("/ping")
-# Healthcheck route to ensure that the API is up and running
 def ping():
+    """Health check."""
     return {"ping": "pong"}
 
 
 @app.post("/predict_wine", response_model=QueryOut, status_code=200)
-# Route to do the prediction using the ML model defined.
-# Payload: QueryIn containing the parameters
-# Response: QueryOut containing the flower_class predicted (200)
-def predict_wine(query_data: QueryIn):
-    output = {"wine_class": predict(query_data)}
-    return output
+def predict_wine(query: WineFeatures):
+    """Predict which cultivar a wine sample came from."""
+    if utils.clf is None and not utils.load_model():
+        raise HTTPException(status_code=503, detail="No trained model available yet")
+    return {"wine_class": utils.predict(query)}
 
 
 @app.post("/reload_model", status_code=200)
-# Route to reload the model from file
 def reload_model():
-    load_model()
-    output = {"detail": "Model successfully loaded"}
-    return output
+    """Load the latest model saved by trainr."""
+    if not utils.load_model():
+        raise HTTPException(status_code=503, detail="No trained model available yet")
+    return {"detail": "Model successfully loaded"}
 
 
-# Main function to start the app when main.py is called
 if __name__ == "__main__":
-    # Uvicorn is used to run the server and listen for incoming API requests on 0.0.0.0:8888
-    uvicorn.run("main:app", host="0.0.0.0", port=9999, reload=True)
+    uvicorn.run("main:app", host="0.0.0.0", port=9999)

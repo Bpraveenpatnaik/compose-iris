@@ -1,17 +1,17 @@
-FROM python:3.8-slim
+FROM python:3.11-slim
 
 WORKDIR /app
+ENV PYTHONUNBUFFERED=1 PYTHONPATH=/app
 
-ENV PYTHONUNBUFFERED 1
-ENV DISPLAY=:99
+COPY predictr/requirements.txt requirements.txt
+RUN pip install --no-cache-dir -r requirements.txt
 
-# Install apt dependencies
-RUN apt update
+COPY common/ common/
+COPY predictr/ .
 
-# Install requirements
-COPY requirements.txt requirements.txt
-RUN pip install -r requirements.txt
+# run as a non-root user
+RUN useradd --create-home appuser && mkdir -p models && chown appuser models
+USER appuser
 
-COPY . /app
-
-ENTRYPOINT python main.py
+EXPOSE 9999
+CMD ["python", "main.py"]

@@ -1,22 +1,25 @@
+import os
 import pickle
-#from sklearn.naive_bayes import GaussianNB
-from sklearn.linear_model import LogisticRegression
-# define a Gaussain NB classifier
-clf = LogisticRegression()
 
-# define the class encodings and reverse encodings
-classes = {0: "Red wine", 1: "White wine", 2: "Grape wine"}
-r_classes = {y: x for x, y in classes.items()}
+from common.wine import CLASSES, WineFeatures
+
+MODEL_DIR = os.getenv("MODEL_DIR", "models")
+MODEL_PATH = os.path.join(MODEL_DIR, "wine_lr.pkl")
+
+clf = None
 
 
-# function to load the model
-def load_model():
+def load_model() -> bool:
+    """Load the latest model from the shared volume. Returns False if trainr
+    hasn't saved one yet."""
     global clf
-    clf = pickle.load(open("models/data_wine.pkl", "rb"))
+    if not os.path.isfile(MODEL_PATH):
+        return False
+    with open(MODEL_PATH, "rb") as f:
+        clf = pickle.load(f)
+    return True
 
 
-# function to predict the wine using the model
-def predict(query_data):
-    x = list(query_data.dict().values())
-    prediction = clf.predict([x])[0]
-    return classes[prediction]
+def predict(query: WineFeatures) -> str:
+    prediction = clf.predict([query.to_row()])[0]
+    return CLASSES[int(prediction)]

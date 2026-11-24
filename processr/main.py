@@ -1,43 +1,34 @@
 import os
-import uvicorn
+
 import requests
-from typing import List
-from fastapi import FastAPI
-from pydantic import BaseModel
+import uvicorn
+from fastapi import FastAPI, HTTPException
+
+from common.wine import WineSample
 from utils import process_data
-from sklearn.datasets import load_wine
 
-TRAINR_ENDPOINT = os.getenv("TRAINR_ENDPOINT")
+TRAINR_ENDPOINT = os.getenv("TRAINR_ENDPOINT", "http://localhost:7777")
 
-# defining the main app
 app = FastAPI(title="processr", docs_url="/")
 
-# class which is expected in the payload while training
-class DataIn(BaseModel):
-    alcohol: float
-    malic_acid: float
-    ash: float
-    alcalinity_of_ash: float
-    wine_class: str
 
-
-# Route definitions
 @app.get("/ping")
-# Healthcheck route to ensure that the API is up and running
 def ping():
+    """Health check."""
     return {"ping": "pong"}
 
 
 @app.post("/process", status_code=200)
-# Route to take in data, process it and send it for training.
-def process(data: List[DataIn]):
+def process(data: list[WineSample]):
+    """Clean labelled samples and send them to trainr for training."""
     processed = process_data(data)
-    # send the processed data to trainr for training
-    response = requests.post(f"{TRAINR_ENDPOINT}/train", json=processed)
-    return {"detail": "Processing successful"}
+    try:
+        response = requests.post(f"{TRAINR_ENDPOINT}/train", json=processed, timeout=30)
+        response.raise_for_status()
+    except requests.RequestException as exc:
+        raise HTTPException(status_code=502, detail=f"trainr request failed: {exc}")
+    return {"detail": "Processing successful", "samples_sent": len(processed)}
 
 
-# Main function to start the app when main.py is called
 if __name__ == "__main__":
-    # Uvicorn is used to run the server and listen for incoming API requests on 0.0.0.0:8888
-    uvicorn.run("main:app", host="0.0.0.0", port=8888, reload=True)
+    uvicorn.run("main:app", host="0.0.0.0", port=8888)
